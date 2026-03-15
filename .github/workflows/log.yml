@@ -4,7 +4,7 @@ on: workflow_dispatch
 jobs:
   summon-pc:
     runs-on: windows-latest
-    # Added permissions so the script can read previous run history
+    # Required permissions for the script to query your GitHub Actions history
     permissions:
       actions: read
       contents: read
@@ -16,23 +16,29 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TOTAL_LIMIT_MINS: 2000
         run: |
-          # 1. Get the total duration of all previous runs for main.yml
+          # 1. Get the current workflow's unique ID dynamically
+          WORKFLOW_ID=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            | jq -r '.workflow_id')
+
+          # 2. Get the total duration of all completed runs for THIS workflow ID (up to last 100)
           PREVIOUS_MS=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/main.yml/runs?status=completed&per_page=100" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/${WORKFLOW_ID}/runs?status=completed&per_page=100" \
             | jq '[.workflow_runs[].run_duration_ms | select(. != null)] | add // 0')
 
-          # 2. Convert milliseconds to minutes
+          # 3. Convert milliseconds to minutes
           USED_MINS=$(( PREVIOUS_MS / 60000 ))
 
-          # 3. Calculate remaining time
+          # 4. Calculate remaining time
           REMAINING_MINS=$(( TOTAL_LIMIT_MINS - USED_MINS ))
 
-          # 4. Format into Hours and Minutes
+          # 5. Format into Hours and Minutes
           RES_H=$(( REMAINING_MINS / 60 ))
           RES_M=$(( REMAINING_MINS % 60 ))
 
-          # 5. Log the result
+          # 6. Log the result clearly in the console
           echo "=========================================="
+          echo "DEBUG: Total Minutes Already Used: $USED_MINS"
           if [ $REMAINING_MINS -le 0 ]; then
             echo "NOTICE: No time remaining! Limit of $TOTAL_LIMIT_MINS minutes reached."
           else
