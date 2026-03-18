@@ -36,6 +36,10 @@ jobs:
         EOF'
         sudo chmod +x /etc/xrdp/startwm.sh
 
+    - name: Set password for runner
+      run: |
+        echo "runner:123456" | sudo chpasswd
+
     - name: Start XRDP
       run: |
         sudo systemctl enable xrdp
@@ -53,7 +57,7 @@ jobs:
       run: |
         echo "====== CONNECT USING RDP ======"
         echo "Username: runner"
-        echo "Password: (not required, just press connect)"
+        echo "Password: 123456"
         tailscale ip -4
 
     - name: Keep session alive
