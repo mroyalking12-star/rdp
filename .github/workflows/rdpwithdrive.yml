@@ -1,4 +1,4 @@
-name: Win11Drive
+name: Win11
 on: workflow_dispatch
 
 jobs:
@@ -10,10 +10,6 @@ jobs:
         run: |
           Invoke-WebRequest https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi -OutFile tailscale.msi
           Start-Process msiexec.exe -ArgumentList "/i tailscale.msi /quiet /norestart" -Wait
-
-      - name: Install Rclone and WinFSP (Dependencies)
-        run: |
-          choco install rclone winfsp -y
 
       - name: Enable Remote Desktop
         run: |
@@ -27,11 +23,7 @@ jobs:
           $date = (Get-Date).ToString("yyyyMMdd").ToUpper()
           $hostname = "$user-$date"
           $authKey = "tskey-auth-kimGNQPCkz11CNTRL-3fDxcDxBubijSqRCoUw4cidnqU7haxvY"
-
-          & "C:\Program Files\Tailscale\tailscale.exe" up `
-            --authkey=$authKey `
-            --hostname=$hostname `
-            --unattended --reset
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=$authKey --hostname=$hostname --unattended --reset
 
       - name: Configure User
         run: |
@@ -40,39 +32,38 @@ jobs:
           Add-LocalGroupMember -Group "Administrators" -Member "RDPUser"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDPUser"
 
-      - name: Mount InfiniCloud WebDAV (Global Desktop)
+      - name: Install Rclone and WinFsp (Dependencies)
         run: |
-          # 1. Kill any existing instances
-          taskkill /IM rclone.exe /F /T | Out-Null
+          # Install rclone and winfsp via choco (fastest for GH Actions)
+          choco install rclone winfsp -y
 
-          # 2. Setup Variables
+      - name: Mount InfiniCloud
+        run: |
+          # 1. Kill the old "empty" mount
+          taskkill /IM rclone.exe /F /T /ErrorAction SilentlyContinue
+
+          # 2. Re-mount using the credentials DIRECTLY in the command
           $pass = "uwWfVg3HNyQ4NE5s"
-          $user = "meownsoor"
-          $url = "https://otaru.infini-cloud.net/dav/"
-          $mountPoint = "C:\Users\Public\Desktop\InfiniCloud"
-          
-          # Create the folder on the Public Desktop so everyone sees it
-          New-Item -ItemType Directory -Force -Path $mountPoint
-          
-          # Obscure password for rclone
+          # Ensure rclone is in path for this session
+          $env:Path += ";C:\Program Files\rclone"
           $obscured = rclone obscure $pass
 
-          # 3. Start the Mount in the background
-          # Note: We use --vfs-cache-mode full to ensure Windows Explorer handles it like a real drive
-          Start-Process rclone -ArgumentList "mount :webdav: `"$mountPoint`" --webdav-url $url --webdav-user $user --webdav-pass $obscured --vfs-cache-mode full --no-check-certificate" -WindowStyle Hidden
-          
-          # 4. Give it time to initialize
-          Start-Sleep -Seconds 10
+          # Create the directory first so the mount has a target
+          New-Item -ItemType Directory -Force -Path "$home\Desktop\InfiniCloud"
+
+          Start-Process rclone -ArgumentList "mount :webdav: `"$home\Desktop\InfiniCloud`" --webdav-url https://otaru.infini-cloud.net/dav/ --webdav-user meownsoor --webdav-pass $obscured --vfs-cache-mode full" -WindowStyle Hidden
+
+          # 3. Wait for the handshake
+          Start-Sleep -Seconds 8
+
+          # 4. Open it and try creating a file
+          explorer "$home\Desktop\InfiniCloud"
 
       - name: Ready to Connect
         run: |
           $tsIP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           echo "=========================================="
           echo "SUCCESS! CONNECT TO THIS IP: $tsIP"
-          echo "USERNAME: RDPUser"
-          echo "PASSWORD: MySecurePass123!"
-          echo "INFINICLOUD: Mounted on Public Desktop"
+          echo "INFINICLOUD MOUNTED AT: $home\Desktop\InfiniCloud"
           echo "=========================================="
-
-          # Keeps the runner alive
           while($true) { Start-Sleep -Seconds 60 }
