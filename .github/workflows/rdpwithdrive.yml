@@ -26,16 +26,27 @@ jobs:
           $authKey = "tskey-auth-kimGNQPCkz11CNTRL-3fDxcDxBubijSqRCoUw4cidnqU7haxvY"
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=$authKey --hostname="Win11-Cloud" --unattended --reset
 
+      - name: Create RDPUser (Force Password)
+        run: |
+          # 1. Create the user
+          $Password = ConvertTo-SecureString "MySecurePass123!" -AsPlainText -Force
+          $newUser = New-LocalUser -Name "RDPUser" -Password $Password -FullName "Cloud User"
+          
+          # 2. Add to Admin and RDP Groups
+          Add-LocalGroupMember -Group "Administrators" -Member "RDPUser"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDPUser"
+          
+          # 3. FORCE PASSWORD (This fixes the 'Wrong Password' error)
+          net user RDPUser MySecurePass123! /active:yes
+
       - name: Setup Public Desktop Folder
         run: |
-          # Use Public Desktop so it shows up for BOTH Administrator and RDPUser
-          $PublicDesktop = "C:\Users\Public\Desktop\InfiniCloud"
-          if (!(Test-Path $PublicDesktop)) { New-Item -ItemType Directory -Path $PublicDesktop -Force }
-          
-          # Grant permissions so everyone can write to it
-          icacls "C:\Users\Public\Desktop\InfiniCloud" /grant "Everyone:(OI)(CI)F" /T
+          # Use Public Desktop so it shows up for everyone
+          $PublicPath = "C:\Users\Public\Desktop\InfiniCloud"
+          if (!(Test-Path $PublicPath)) { New-Item -ItemType Directory -Path $PublicPath -Force }
+          icacls $PublicPath /grant "Everyone:(OI)(CI)F" /T
 
-      - name: Mount InfiniCLOUD (Direct Method)
+      - name: Mount InfiniCLOUD
         shell: pwsh
         run: |
           $user = "meownsoor"
@@ -43,21 +54,19 @@ jobs:
           $url = "https://otaru.infini-cloud.net/dav/"
           $obscured = rclone obscure $pass
           
-          # Setup cache on D:
           New-Item -ItemType Directory -Force -Path "D:\rcache"
-
-          # Mount to the Public Desktop
           $MountPath = "C:\Users\Public\Desktop\InfiniCloud"
           
           Start-Process rclone -ArgumentList "mount :webdav: `"$MountPath`" --webdav-url $url --webdav-user $user --webdav-pass $obscured --vfs-cache-mode full --vfs-cache-max-size 20G --cache-dir D:\rcache" -WindowStyle Hidden
           
           Start-Sleep -Seconds 20
 
-      - name: Ready to Connect
+      - name: Final Connection Info
         run: |
           $tsIP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           echo "=========================================="
-          echo "SUCCESS! IP: $tsIP"
-          echo "The InfiniCloud folder is on the PUBLIC desktop."
+          echo "IP: $tsIP"
+          echo "USER: RDPUser"
+          echo "PASS: MySecurePass123!"
           echo "=========================================="
           while($true) { Start-Sleep -Seconds 60 }
